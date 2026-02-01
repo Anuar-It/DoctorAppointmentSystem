@@ -1,6 +1,6 @@
-package com.company.repository;
+package main.java.com.company.repository;
 
-import com.company.db.DBConnection;
+import main.java.com.company.db.DBConnection;
 
 import java.sql.*;
 import java.util.HashSet;

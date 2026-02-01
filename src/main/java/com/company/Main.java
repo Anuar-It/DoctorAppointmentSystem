@@ -1,7 +1,7 @@
-package com.company;
+package main.java.com.company;
 
-import com.company.controller.AppointmentController;
-import com.company.entity.User;
+import main.java.com.company.controller.AppointmentController;
+import main.java.com.company.entity.User;
 
 import java.sql.Date;
 import java.sql.Time;

@@ -1,111 +1,165 @@
 package com.company.repository;
 
-import main.java.com.company.db.DBConnection;
+import com.company.db.DBConnection;
+import com.company.dto.FullAppointmentDto;
+import com.company.entity.AppointmentStatus;
 
 import java.sql.*;
-import java.util.HashSet;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 public class AppointmentRepository {
 
-    public boolean isSlotTaken(int doctorId, Date date, Time time) throws SQLException {
-        String sql = "SELECT 1 FROM appointments WHERE doctor_id=? AND date=? AND time=? AND status='BOOKED'";
-        PreparedStatement ps = DBConnection.getConnection().prepareStatement(sql);
-        ps.setInt(1, doctorId);
-        ps.setDate(2, date);
-        ps.setTime(3, time);
-        return ps.executeQuery().next();
-    }
-
-    public void save(int doctorId, int userId, Date date, Time time) throws SQLException {
-        String sql = "INSERT INTO appointments (doctor_id, user_id, date, time, status) VALUES (?, ?, ?, ?, 'BOOKED')";
-        PreparedStatement ps = DBConnection.getConnection().prepareStatement(sql);
-        ps.setInt(1, doctorId);
-        ps.setInt(2, userId);
-        ps.setDate(3, date);
-        ps.setTime(4, time);
-        ps.executeUpdate();
-    }
-
-    public void getFullAppointments() throws SQLException {
-        String sql = """
-                SELECT a.id, d.name, u.name, a.date, a.time, a.status
-                FROM appointments a
-                JOIN doctors d ON a.doctor_id = d.id
-                JOIN users u ON a.user_id = u.id
-                """;
-
-        Statement st = DBConnection.getConnection().createStatement();
-        ResultSet rs = st.executeQuery(sql);
-
-        System.out.println("ID | Doctor | Patient | Date | Time | Status");
-        while (rs.next()) {
-            System.out.println(
-                    rs.getInt(1) + " | " +
-                            rs.getString(2) + " | " +
-                            rs.getString(3) + " | " +
-                            rs.getDate(4) + " | " +
-                            rs.getTime(5) + " | " +
-                            rs.getString(6)
-            );
-        }
-    }
-
-    public void showDoctors() throws SQLException {
-        String sql = "SELECT id, name, specialization FROM doctors ORDER BY id";
-        Statement st = DBConnection.getConnection().createStatement();
-        ResultSet rs = st.executeQuery(sql);
-
-        System.out.println("ID | Name | Specialization");
-        while (rs.next()) {
-            System.out.println(
-                    rs.getInt(1) + " | " +
-                            rs.getString(2) + " | " +
-                            rs.getString(3)
-            );
-        }
-    }
-
-    public void showUsers() throws SQLException {
-        String sql = "SELECT id, name, role FROM users ORDER BY id";
-        Statement st = DBConnection.getConnection().createStatement();
-        ResultSet rs = st.executeQuery(sql);
-
-        System.out.println("ID | Name | Role");
-        while (rs.next()) {
-            System.out.println(
-                    rs.getInt(1) + " | " +
-                            rs.getString(2) + " | " +
-                            rs.getString(3)
-            );
-        }
-    }
-
-    public void showFreeSlots(int doctorId, Date date) throws SQLException {
-        String[] slots = {
-                "09:00","09:30","10:00","10:30","11:00","11:30",
-                "12:00","12:30","13:00","13:30","14:00","14:30","15:00"
-        };
-
-        String sql = "SELECT time FROM appointments WHERE doctor_id=? AND date=? AND status='BOOKED'";
-        PreparedStatement ps = DBConnection.getConnection().prepareStatement(sql);
-        ps.setInt(1, doctorId);
-        ps.setDate(2, date);
-        ResultSet rs = ps.executeQuery();
-
-        HashSet<String> booked = new HashSet<>();
-        while (rs.next()) {
-            booked.add(rs.getTime(1).toString().substring(0, 5));
-        }
-
-        System.out.println("Free slots:");
-        boolean found = false;
-        for (String s : slots) {
-            if (!booked.contains(s)) {
-                System.out.print(s + " ");
-                found = true;
+    public boolean slotExists(int doctorId, LocalDateTime startAt) {
+        String sql = "SELECT 1 FROM appointments WHERE doctor_id=? AND start_at=? AND status IN ('BOOKED','RESCHEDULED')";
+        try (Connection c = DBConnection.getInstance().getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setInt(1, doctorId);
+            ps.setTimestamp(2, Timestamp.valueOf(startAt));
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
             }
-        }
-        System.out.println();
-        if (!found) System.out.println("No free slots");
+        } catch (SQLException e) { throw new RuntimeException(e); }
+    }
+
+    public int insert(int doctorId, int patientId, LocalDateTime startAt, String reason) {
+        String sql = """
+            INSERT INTO appointments(doctor_id, patient_id, start_at, status, reason)
+            VALUES(?,?,?,?,?)
+            RETURNING id
+        """;
+        try (Connection c = DBConnection.getInstance().getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setInt(1, doctorId);
+            ps.setInt(2, patientId);
+            ps.setTimestamp(3, Timestamp.valueOf(startAt));
+            ps.setString(4, AppointmentStatus.BOOKED.name());
+            ps.setString(5, reason);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                return rs.getInt("id");
+            }
+        } catch (SQLException e) { throw new RuntimeException(e); }
+    }
+
+    public List<FullAppointmentDto> findByPatientFull(int patientId) {
+        String sql = """
+            SELECT a.id, a.start_at, a.status, a.reason,
+                   pu.full_name AS patient_name,
+                   du.full_name AS doctor_name,
+                   s.name AS specialization,
+                   d.cabinet
+            FROM appointments a
+            JOIN users pu ON pu.id = a.patient_id
+            JOIN doctors d ON d.id = a.doctor_id
+            JOIN users du ON du.id = d.user_id
+            JOIN specializations s ON s.id = d.specialization_id
+            WHERE a.patient_id = ?
+            ORDER BY a.start_at DESC
+        """;
+        return queryFull(sql, patientId);
+    }
+
+    public List<FullAppointmentDto> findAllFull() {
+        String sql = """
+            SELECT a.id, a.start_at, a.status, a.reason,
+                   pu.full_name AS patient_name,
+                   du.full_name AS doctor_name,
+                   s.name AS specialization,
+                   d.cabinet
+            FROM appointments a
+            JOIN users pu ON pu.id = a.patient_id
+            JOIN doctors d ON d.id = a.doctor_id
+            JOIN users du ON du.id = d.user_id
+            JOIN specializations s ON s.id = d.specialization_id
+            ORDER BY a.start_at DESC
+        """;
+        return queryFull(sql);
+    }
+
+    public List<FullAppointmentDto> findDoctorDay(int doctorId, LocalDate day) {
+        String sql = """
+            SELECT a.id, a.start_at, a.status, a.reason,
+                   pu.full_name AS patient_name,
+                   du.full_name AS doctor_name,
+                   s.name AS specialization,
+                   d.cabinet
+            FROM appointments a
+            JOIN users pu ON pu.id = a.patient_id
+            JOIN doctors d ON d.id = a.doctor_id
+            JOIN users du ON du.id = d.user_id
+            JOIN specializations s ON s.id = d.specialization_id
+            WHERE a.doctor_id = ?
+              AND a.start_at >= ?
+              AND a.start_at < ?
+              AND a.status IN ('BOOKED','RESCHEDULED')
+            ORDER BY a.start_at
+        """;
+        return queryFull(sql, doctorId,
+                Timestamp.valueOf(day.atStartOfDay()),
+                Timestamp.valueOf(day.plusDays(1).atStartOfDay()));
+    }
+
+    public void updateStatus(int appointmentId, AppointmentStatus status) {
+        String sql = "UPDATE appointments SET status=?, updated_at=now() WHERE id=?";
+        try (Connection c = DBConnection.getInstance().getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, status.name());
+            ps.setInt(2, appointmentId);
+            ps.executeUpdate();
+        } catch (SQLException e) { throw new RuntimeException(e); }
+    }
+
+    public LocalDateTime getStartAt(int appointmentId) {
+        String sql = "SELECT start_at FROM appointments WHERE id=?";
+        try (Connection c = DBConnection.getInstance().getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setInt(1, appointmentId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                return rs.getTimestamp("start_at").toLocalDateTime();
+            }
+        } catch (SQLException e) { throw new RuntimeException(e); }
+    }
+
+    public void reschedule(int appointmentId, LocalDateTime newStartAt) {
+        String sql = "UPDATE appointments SET start_at=?, status='RESCHEDULED', updated_at=now() WHERE id=?";
+        try (Connection c = DBConnection.getInstance().getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setTimestamp(1, Timestamp.valueOf(newStartAt));
+            ps.setInt(2, appointmentId);
+            ps.executeUpdate();
+        } catch (SQLException e) { throw new RuntimeException(e); }
+    }
+
+    private List<FullAppointmentDto> queryFull(String sql, Object... params) {
+        try (Connection c = DBConnection.getInstance().getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            for (int i = 0; i < params.length; i++) {
+                Object p = params[i];
+                if (p instanceof Integer) ps.setInt(i + 1, (Integer) p);
+                else if (p instanceof Timestamp) ps.setTimestamp(i + 1, (Timestamp) p);
+                else ps.setObject(i + 1, p);
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                List<FullAppointmentDto> out = new ArrayList<>();
+                while (rs.next()) {
+                    out.add(new FullAppointmentDto(
+                        rs.getInt("id"),
+                        rs.getTimestamp("start_at").toLocalDateTime(),
+                        AppointmentStatus.fromString(rs.getString("status")),
+                        rs.getString("reason"),
+                        rs.getString("patient_name"),
+                        rs.getString("doctor_name"),
+                        rs.getString("specialization"),
+                        rs.getString("cabinet")
+                    ));
+                }
+                return out;
+            }
+        } catch (SQLException e) { throw new RuntimeException(e); }
     }
 }
+

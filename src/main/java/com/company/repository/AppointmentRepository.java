@@ -1,4 +1,4 @@
-package main.java.com.company.repository;
+package com.company.repository;
 
 import main.java.com.company.db.DBConnection;
 

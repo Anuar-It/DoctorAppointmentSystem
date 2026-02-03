@@ -1,4 +1,4 @@
-package main.java.com.company.entity;
+package com.company.entity;
 
 public class Doctor {
     private int id;

@@ -1,23 +1,30 @@
-package main.java.com.company.db;
+package com.company.db;
+
+import com.company.config.AppConfig;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 
-public class DBConnection {
+public final class DBConnection {
+    private static DBConnection instance;
 
-    private static Connection connection;
+    private final String url;
+    private final String user;
+    private final String password;
 
-    private DBConnection() {}
+    private DBConnection() {
+        this.url = AppConfig.get("db.url");
+        this.user = AppConfig.get("db.user");
+        this.password = AppConfig.get("db.password");
+    }
 
-    public static Connection getConnection() throws SQLException {
-        if (connection == null) {
-            connection = DriverManager.getConnection(
-                    "jdbc:postgresql://localhost:5432/clinic",
-                    "postgres",
-                    "0000"
-            );
-        }
-        return connection;
+    public static synchronized DBConnection getInstance() {
+        if (instance == null) instance = new DBConnection();
+        return instance;
+    }
+
+    public Connection getConnection() throws SQLException {
+        return DriverManager.getConnection(url, user, password);
     }
 }

@@ -1,0 +1,28 @@
+package com.company.dto;
+
+import com.company.entity.AppointmentStatus;
+
+import java.time.LocalDateTime;
+
+public class FullAppointmentDto {
+    public final int appointmentId;
+    public final LocalDateTime startAt;
+    public final AppointmentStatus status;
+    public final String reason;
+    public final String patientName;
+    public final String doctorName;
+    public final String specialization;
+    public final String cabinet;
+
+    public FullAppointmentDto(int appointmentId, LocalDateTime startAt, AppointmentStatus status, String reason,
+                              String patientName, String doctorName, String specialization, String cabinet) {
+        this.appointmentId = appointmentId;
+        this.startAt = startAt;
+        this.status = status;
+        this.reason = reason;
+        this.patientName = patientName;
+        this.doctorName = doctorName;
+        this.specialization = specialization;
+        this.cabinet = cabinet;
+    }
+}

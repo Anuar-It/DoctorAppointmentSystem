@@ -12,7 +12,8 @@ public class PasswordHasher {
             for (byte b : out) sb.append(String.format("%02x", b));
             return sb.toString();
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException("Hash failed", e);
         }
     }
 }
+
